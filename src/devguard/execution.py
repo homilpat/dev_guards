@@ -5,7 +5,6 @@ import os
 import subprocess
 import threading
 import time
-from collections import deque
 from pathlib import Path
 
 from devguard.secrets import ASSIGNMENT, HIGH_CONFIDENCE
@@ -24,7 +23,10 @@ def run(
     memory_mb: int = 2048,
     env_extra: dict | None = None,
     output_bytes: int = 1_000_000,
+    keep_bytes: int = 8000,
+    redact: bool = True,
 ) -> dict:
+    """Run argv; `keep_bytes` is the output tail returned, `redact` scrubs it for secrets."""
     import psutil
 
     started = time.monotonic()
@@ -43,7 +45,7 @@ def run(
     env.pop("PYTHONPATH", None)
     env.pop("PYTEST_ADDOPTS", None)
     env.update(env_extra or {})
-    tail: deque[bytes] = deque(maxlen=8)
+    tail = bytearray()
     total = 0
     digest = hashlib.sha256()
     lock = threading.Lock()
@@ -67,7 +69,9 @@ def run(
                 with lock:
                     digest.update(chunk)
                     total += len(chunk)
-                    tail.append(chunk)
+                    tail.extend(chunk)
+                    if len(tail) > 2 * keep_bytes:
+                        del tail[: len(tail) - keep_bytes]
         finally:
             process.stdout.close()
 
@@ -122,7 +126,8 @@ def run(
     if status == "PASS" and process.returncode:
         status = "FAIL"
     with lock:
-        output = scrub(b"".join(tail).decode("utf-8", errors="replace"))[-8000:]
+        text = bytes(tail).decode("utf-8", errors="replace")
+        output = (scrub(text) if redact else text)[-keep_bytes:]
         output_hash = digest.hexdigest()
     return {
         "status": status,
