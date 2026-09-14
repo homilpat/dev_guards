@@ -5,7 +5,6 @@
   "author": {
     "name": "homilpat"
   },
-  "repository": "https://github.com/homilpat/dev-guard",
-  "license": "MIT",
+  "repository": "https://github.com/homilpat/dev_guards",
   "keywords": ["guardrails", "security", "hooks"]
 }
