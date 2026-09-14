@@ -47,10 +47,50 @@ Knowledge Hub v1.10(로컬 모델 코드 에이전트, `homilpat/Code_Agent`)을
 - Claude Code `Grep`이 디렉터리 전체를 검색할 때 민감 파일 내용이 섞이는 경우는 hook만으로 막지 못한다. `permissions.deny`를 함께 쓴다.
 - 비밀값 탐지는 형식 기반이다.
 
-## 다음 단계 (추천 순서, 사용자 확정 전)
+## 1.5단계: Code_Agent 프로젝트 파일럿 연결 (완료, 실사용 확인 전)
 
-1. **실사용 테스트:** 전역 설치 없이 Code_Agent 프로젝트에만 적용한다. Claude Code는 `.claude/settings.local.json`, Codex는 `.codex/hooks.json`에 등록하고, 이 레포의 `.venv` Python을 절대 경로로 지정한다. 1~2주 사용하며 오탐·누락을 모은다.
-2. **Stop 게이트:** 작업 종료 전에 언어별 테스트 명령(pytest, npm test, mvn/gradle test)을 강제하고, 실패하면 결과를 에이전트에 돌려준다. 무한 반복을 방지한다.
-3. **측정:** Python tracemalloc 증가율(입력 10배 → peak 배수), 이후 Java JFR, JS V8 heap/CPU profile.
-4. **최적화 루프:** 후보 생성 → 기존 테스트로 동작 동일성 확인 → 벤치마크로 실제 개선만 채택(Codeflash 방식을 로컬에서 구현).
-5. **문맥 연결:** Serena(LSP), Potpie, 실패 기억.
+- 커밋: `32758b8`(2단계 코드와 함께). Code_Agent 쪽 `.gitignore`는 `homilpat/Code_Agent` `f61b038`.
+- 기존 `.venv`는 이 PC에 없는 Python 3.14를 가리켜 실행 불가. conda Python 3.11로 `.venv-runtime`을 만들었다. 이후 Codex 세션에서 `psutil pytest ruff jedi typer PyYAML`을 이 환경에 설치했다.
+- `src/devguard/launcher.py`: 절대 경로 Python + `-I`로 실행해 프로젝트의 동명 모듈이나 `PYTHONPATH`가 검사 코드를 바꾸지 못하게 했다.
+- CLI 서브커맨드와 `check --command` 이름 충돌 수정. Windows PowerShell이 hook의 exit 2를 1로 바꾸는 문제는 `commandWindows`에서 `exit $LASTEXITCODE`로 보존.
+- Code_Agent에만 `.claude/settings.local.json`, `.codex/hooks.json`, `.codex/config.toml` 설치(PC별 경로라 git 제외). 전역 설정 변경 없음. 등록된 hook은 PreToolUse, UserPromptSubmit뿐이다.
+- 검증: 당시 119 passed, 실제 셸로 설정 명령을 모의 입력 호출한 10개 사례 통과.
+- **미완료:** Codex CLI `/hooks`에서 프로젝트 hook 신뢰, 실제 모델 세션에서 hook 자동 호출 확인.
+
+## 2단계: 작업 흐름 게이트·측정·문맥 (코드 반영, 실사용 연결 전)
+
+사용자 요청("Potpie·Ponytail·Serena·Stop 게이트·측정·실패 기억 연결")으로 2026-09-14 15:46~16:11 Codex 세션에서 작성했다. 작업은 `knowledge_hub_v1.10_FINAL_FREEZE_v7/_devguard_session` 사본에서 했고, 사용량 한도로 세션이 끊긴 뒤 Claude Code 세션에서 이 레포로 옮겨 `32758b8`로 커밋했다.
+
+| 파일 | 내용 |
+|---|---|
+| `workflow.py` | 신뢰 설정 `~/.dev-guard/workflows.json`(프로젝트 밖에만 허용) 로드. SessionStart에 소스 스냅샷 저장, Stop에 변경 파일 수·순증 줄 수·분기 증가(Ponytail식), 테스트 삭제·skip, 의존성 manifest 변경을 검사하고 등록된 check를 실행. 결과는 소스 해시에 묶여 코드가 바뀌면 이전 PASS를 인정하지 않음. check 도중 소스 변경은 FAIL. 재시도 한도(기본 3) 초과 시 `RETRY_LIMIT`로 중단. 실패 기억은 분류와 해시만 저장(원문 출력 없음). Ponytail 규칙 파일은 sha256 고정 후 SessionStart 문맥에 주입 |
+| `execution.py` | psutil로 프로세스 트리 RSS·CPU를 20ms 간격 측정, 시간·메모리·출력 한도, 종료 시 자식 프로세스 정리, 비밀값 형식 출력 가림, 토큰류 환경변수 제거 |
+| `benchmark.py` | 등록된 작업만 워밍업 1회 + 3~9회 반복 측정(중앙값). 기준값은 덮어쓰지 않음. 최신 게이트가 같은 소스 해시로 PASS일 때만 비교, 대상 지표 5% 이상 개선 + 다른 지표 10% 이내 악화일 때 `IMPROVED` |
+| `context.py` | UserPromptSubmit에서 Potpie CLI 검색 결과와 최근 실패 기억을 "신뢰할 수 없는 근거"로 표시해 주입 |
+| `cli.py` | `dev-guard workflow start/check/status/context/memory`, `dev-guard benchmark <profile> [--baseline]`. SessionStart/Stop hook 라우팅. Stop 중 내부 오류는 성공으로 보고하지 않고 중단 |
+
+- 옮기면서 수정: 검사 중 강제 종료로 남은 `running.lock`이 이후 모든 Stop을 막던 문제(잠금에 PID 기록, 죽은 PID면 회수). 수정 전 코드에서 실패하는 회귀 테스트 추가. `context.py` 줄 길이 lint.
+- 검증: `.venv-runtime` + `PYTHONPATH=src`로 **129 passed**, `ruff check`·`ruff format --check`·`git diff --check` 통과. 기존 `.venv`에는 psutil이 없어 workflow 테스트가 실패한다.
+
+### 외부 도구 준비 상태 (요구사항 폴더 `_integration_sources/`, 이 레포 밖)
+
+- Potpie(`potpie-ai/potpie` `6373454`): `potpie-env`에 설치. `CONTEXT_ENGINE_BACKEND=embedded`, `HOST_MODE=in_process`, `EMBEDDER=local`, `POTPIE_TELEMETRY_DISABLED=1`로 pot `code-agent-devguard` 생성. **소스 미등록(`sources: {}`)이라 검색 결과 없음.** `context.py`의 `--json search --pot ... -- <질의>` 호출 형식은 실제 CLI와 대조하지 않았다.
+- Serena(`oraios/serena` `403ad0a`): `serena-env`에 설치, `--help`만 확인. 프로젝트 등록·언어 서버(jedi) 설정과 dev-guard 연결 없음. SessionStart 문구에 사용 안내만 있다.
+- Ponytail(`DietrichGebert/ponytail` `356918e`): 소스만 받음. `workflows.json`의 `ponytail.path/sha256` 설정 없음.
+- Local-Only 관점의 egress 차단은 검증하지 않았다.
+
+### 알려진 한계
+
+- `workflows.json`이 없으면 게이트는 아무것도 하지 않는다(`NOT_CONFIGURED`). 아직 어느 프로젝트에도 만들지 않았다.
+- 복잡도·테스트 이름·skip 탐지는 Python AST와 정규식 기반이다. TS/JS·Java는 변경량과 skip 패턴만 본다.
+- 메모리는 샘플링 RSS라 짧은 순간 peak를 놓칠 수 있다. Python heap·JVM·V8 내부 측정이 아니다.
+- 잠금 PID 재사용 시 살아 있는 것으로 오판할 수 있다(이 경우 사용자가 잠금 파일을 지운다).
+
+## 다음 단계 (추천 순서)
+
+1. **실사용 연결:** Code_Agent용 `~/.dev-guard/workflows.json` 작성(pytest check, scopes, 한도) → 파일럿 hook 설정에 SessionStart·Stop 추가 → Codex `/hooks` 신뢰 → 실제 세션에서 호출 확인.
+2. **Potpie:** Code_Agent 소스 등록, 검색 명령 형식 확인, on/off로 문맥 주입 효과 측정.
+3. **Serena:** 읽기 전용 프로젝트 등록과 호출처 조회 연결.
+4. **Ponytail:** 규칙 파일 경로·해시 설정, 변경량 한도 값 조정.
+5. **언어 확장:** TS/JS(npm test, V8 profile), Java(gradle/mvn test, JFR) check·benchmark 템플릿.
+6. **최적화 루프:** 후보 생성 → 게이트 PASS → benchmark `IMPROVED`만 채택.
