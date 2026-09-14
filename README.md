@@ -34,7 +34,7 @@ Claude Code와 Codex CLI로 개발할 때 **결정적 코드로 강제하는 가
 - **M08 "외부 LLM API 금지"**: 이 도구는 Claude/Codex 위에서 동작하므로 그대로 적용할 수 없습니다. 대신 민감 파일은 에이전트에 들어가지 않게 막고, 반출이 금지된 저장소는 `local-only`로 지정해 클라우드 에이전트 사용 자체를 막습니다.
 - **M06 "명백한 secret 추가 차단"**: 형식이 확실한 키만 차단하고, 테스트 픽스처에 흔한 일반 할당은 확인으로 둡니다.
 - **M06 "공개 레지스트리 금지"·"raw shell 금지"**: 개발 중에는 필요한 경우가 많아 확인으로 둡니다.
-- **Codex**: hook이 확인 창을 띄울 수 없어 "확인" 규칙도 차단합니다. 대신 `dev-guard codex-rules`가 만드는 execpolicy 규칙이 Codex 자체의 승인 프롬프트를 띄웁니다.
+- **Codex**: hook이 확인 창을 띄울 수 없어 "확인" 규칙도 차단합니다. `codex-rules`의 `prompt`는 hook 차단을 해제하지 않습니다. 두 기능을 함께 켜면 hook의 차단이 유지됩니다. 필요한 예외는 사용자가 정책에서 직접 검토해야 합니다.
 
 ## 정책 위치와 신뢰 경계
 
@@ -89,6 +89,8 @@ Copy-Item adapters\codex\hooks.json $HOME\.codex\hooks.json   # 기존 hooks.jso
 `adapters/codex/AGENTS.dev-guard.md` 내용을 `~/.codex/AGENTS.md`에 추가합니다. 새 hook은 Codex의 `/hooks`에서 신뢰 승인이 필요합니다.
 
 ## 개발
+
+프로젝트 한정 연결과 가상환경 복구 절차는 [PROJECT_PILOT.md](docs/PROJECT_PILOT.md)를 참고합니다.
 
 ```powershell
 python -m pip install -e ".[dev]"

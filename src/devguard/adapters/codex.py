@@ -2,7 +2,8 @@
 
 Codex PreToolUse hooks can deny but cannot open an approval prompt, so ASK is rendered as a
 block with an explanation. Commands that merely need approval are also emitted as
-`decision = "prompt"` execpolicy rules, which Codex can prompt for natively.
+`decision = "prompt"` execpolicy rules for use without the hook. An execpolicy approval
+does not override a PreToolUse hook denial when both are enabled.
 """
 
 import json
