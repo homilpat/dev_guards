@@ -261,6 +261,12 @@ def gate(cfg: dict, session: str) -> dict:
             }
         state["attempts"] += 1
         save(path, state)  # a crashed runner still consumes an attempt
+        if prior.get("source_hash") == current["hash"] and reusable(prior):
+            # Nothing changed since a deterministic failure; re-running only burns time.
+            result = {**prior, "attempt": state["attempts"], "rerun": False}
+            state["result"] = result
+            save(path, state)
+            return result
         findings = quality(state["baseline"], current, cfg)
         results = []
         checks = cfg.get("checks", [])
@@ -326,6 +332,34 @@ def gate(cfg: dict, session: str) -> dict:
         return result
 
 
+def reusable(result: dict) -> bool:
+    """A failure that re-running the same source cannot change (no timeouts or races)."""
+    return (
+        result.get("status") == "FAIL"
+        and "SOURCE_CHANGED_DURING_CHECK" not in result.get("findings", [])
+        and all(c.get("status") in {"PASS", "FAIL"} for c in result.get("checks", []))
+    )
+
+
+def brief(result: dict) -> dict:
+    """Block feedback keeps output only for checks that did not pass."""
+    checks = []
+    for check in result.get("checks", []):
+        item = {k: check[k] for k in ("id", "status", "exit_code") if k in check}
+        if check.get("status") != "PASS":
+            item["output"] = check.get("output", "")[-4000:]
+        checks.append(item)
+    return {**result, "checks": checks}
+
+
+BLOCK_REASON = (
+    "dev-guard checks failed for the current source. Fix the cause without weakening tests, "
+    "checks or limits. If it cannot pass, revert the change that caused the failure, or stop "
+    "and report the work as incomplete. Ending the turn without changing files counts as "
+    "another failed attempt.\n"
+)
+
+
 def memories(cfg: dict) -> list[dict]:
     paths = sorted(directory(cfg).glob("failure-*.json"), key=lambda p: p.stat().st_mtime)[-5:]
     return [json.loads(p.read_text(encoding="utf-8")) for p in paths]
@@ -357,6 +391,10 @@ def hook(event: str, payload: dict, cwd: Path, stdout) -> int:
     result = gate(cfg, session)
     if result["status"] in {"PASS", "UNCHANGED"}:
         stdout.write(json.dumps({"systemMessage": "dev-guard: " + result["status"]}))
+    elif result["status"] in {"NOT_INITIALIZED", "CONFIG_CHANGED"}:
+        # The agent cannot clear these and attempts are not counted, so blocking would loop.
+        message = "dev-guard: " + result["status"] + " - checks did not run; not verified. "
+        stdout.write(json.dumps({"systemMessage": message + result["reason"]}))
     elif result["status"] == "RETRY_LIMIT":
         stdout.write(
             json.dumps(
@@ -372,9 +410,7 @@ def hook(event: str, payload: dict, cwd: Path, stdout) -> int:
             json.dumps(
                 {
                     "decision": "block",
-                    "reason": "dev-guard checks failed. "
-                    "Fix the cause without weakening tests or limits.\n"
-                    + json.dumps(result, ensure_ascii=False),
+                    "reason": BLOCK_REASON + json.dumps(brief(result), ensure_ascii=False),
                 }
             )
         )

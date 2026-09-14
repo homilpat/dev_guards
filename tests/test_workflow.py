@@ -120,6 +120,59 @@ def test_stop_without_baseline_does_not_claim_pass(project):
     output = io.StringIO()
     workflow.hook("SessionStart", {"session_id": "s"}, root, output)
     assert "additionalContext" in output.getvalue()
+    stop = io.StringIO()
+    workflow.hook("Stop", {"session_id": "never-started"}, root, stop)
+    reply = json.loads(stop.getvalue())
+    assert "decision" not in reply  # an unclearable block would loop forever
+    assert "NOT_INITIALIZED" in reply["systemMessage"] and "PASS" not in reply["systemMessage"]
+
+
+def test_unchanged_deterministic_failure_is_not_rerun(project, tmp_path):
+    cfg, root = project
+    runs = tmp_path / "runs"
+    script = "import sys; open(sys.argv[1], 'a').write('x'); raise SystemExit(1)"
+    cfg["checks"][0]["argv"] = [sys.executable, "-c", script, str(runs)]
+    workflow.start(cfg, "s")
+    (root / "app.py").write_text("value = 2\n")
+    first = workflow.gate(cfg, "s")
+    second = workflow.gate(cfg, "s")
+    assert first["status"] == second["status"] == "FAIL"
+    assert second["attempt"] == 2 and second["rerun"] is False
+    assert runs.read_text() == "x"
+    assert workflow.gate(cfg, "s")["status"] == "RETRY_LIMIT"
+
+
+def test_inconclusive_failure_is_rerun_without_source_change(project, tmp_path):
+    cfg, root = project
+    runs = tmp_path / "runs"
+    script = "import sys, time; open(sys.argv[1], 'a').write('x'); time.sleep(10)"
+    cfg["checks"][0].update(argv=[sys.executable, "-c", script, str(runs)], timeout=1)
+    workflow.start(cfg, "s")
+    (root / "app.py").write_text("value = 2\n")
+    assert workflow.gate(cfg, "s")["checks"][0]["status"] == "TIMEOUT"
+    workflow.gate(cfg, "s")
+    assert runs.read_text() == "xx"
+
+
+def test_block_reason_keeps_only_failing_output_and_offers_revert(project, isolated_home):
+    cfg, root = project
+    cfg["checks"] = [
+        {"id": "ok", "argv": [sys.executable, "-c", "print('passing-output')"], "timeout": 5},
+        {
+            "id": "bad",
+            "argv": [sys.executable, "-c", "print('failing-output'); raise SystemExit(1)"],
+            "timeout": 5,
+        },
+    ]
+    (isolated_home / "workflows.json").write_text(json.dumps({"version": 1, "projects": [cfg]}))
+    workflow.hook("SessionStart", {"session_id": "s"}, root, io.StringIO())
+    (root / "app.py").write_text("value = 2\n")
+    output = io.StringIO()
+    workflow.hook("Stop", {"session_id": "s"}, root, output)
+    reply = json.loads(output.getvalue())
+    assert reply["decision"] == "block"
+    assert "failing-output" in reply["reason"] and "passing-output" not in reply["reason"]
+    assert "revert" in reply["reason"]
 
 
 def test_stale_lock_from_crashed_check_does_not_block_forever(project):
