@@ -72,6 +72,11 @@ def configuration(cwd: Path) -> dict | None:
                     raise ValueError("Check cwd escapes the registered project")
                 if not 0 < check.get("timeout", 120) <= 600:
                     raise ValueError("Check timeout must be 0..600 seconds")
+            provider = cfg.get("potpie")
+            if provider is not None:
+                argv = provider.get("argv")
+                if not isinstance(argv, list) or not argv or not Path(argv[0]).is_absolute():
+                    raise ValueError("Potpie executable must be an absolute argv[0]")
             candidates.append(cfg)
     return max(candidates, key=lambda c: len(c["root"])) if candidates else None
 
