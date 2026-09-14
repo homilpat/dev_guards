@@ -86,9 +86,21 @@ Knowledge Hub v1.10(로컬 모델 코드 에이전트, `homilpat/Code_Agent`)을
 - 메모리는 샘플링 RSS라 짧은 순간 peak를 놓칠 수 있다. Python heap·JVM·V8 내부 측정이 아니다.
 - 잠금 PID 재사용 시 살아 있는 것으로 오판할 수 있다(이 경우 사용자가 잠금 파일을 지운다).
 
+### 실사용 연결 (2026-09-14 저녁, 모의 호출까지 완료)
+
+- `~/.dev-guard/workflows.json`(PC 로컬, 커밋 안 함) 작성. Code_Agent 기준:
+  - check 3개: `code-agent-pytest`(scope `code-agent/`, 300초, 2GB), `code-agent-ruff`(scope `code-agent/`), `evals-pytest`(scope `evals/`). 실행 Python은 Code_Agent에 venv가 없어 `.venv-runtime`을 쓰고 `PYTHONPATH=code-agent/src`를 준다. basetemp는 `~/.dev-guard/tmp/`.
+  - `exclude`: `backend-spring/`, `frontend-nextjs/`, `rag-fastapi/`, `docker/`, `docker-compose.yml`, `게시물/`. 검사 명령이 없어 게이트 대상에서 뺐다(이 영역 변경은 검사되지 않는다).
+  - 한도: 변경 30파일, 순증 600줄, 파일당 분기 증가 20, manifest 변경 불허, 재시도 3회.
+- Code_Agent `.claude/settings.local.json`, `.codex/hooks.json`에 SessionStart(60초)·Stop(600초) 추가. Codex 공식 문서에서 두 이벤트와 Stop의 `decision: block`/`continue: false` 출력을 확인했다.
+- 사전 확인: dev-guard 실행기로 code-agent 131 passed/5 skipped(2.3초, peak RSS 61MB), evals 9 passed, code-agent ruff 통과.
+- launcher로 실제 hook 입력을 흉내 낸 흐름 확인: SessionStart 문맥 주입 → 변경 없음 `UNCHANGED` → code-agent 임시 파일 추가 시 검사 실행 `PASS` → 테스트 함수 제거 시 `TEST_REMOVAL`로 block → 복원 후 `UNCHANGED`. Claude Code·Codex 어댑터 둘 다. 임시 파일과 모의 상태·실패 기억은 삭제했고 Code_Agent 작업 트리는 깨끗하다.
+- SessionStart 문구에서 연결되지 않은 Serena 안내를 뺐다.
+- **미확인:** 실제 Claude Code·Codex 세션에서의 자동 호출. Codex는 `/hooks`에서 새 hook 신뢰가 필요하다.
+
 ## 다음 단계 (추천 순서)
 
-1. **실사용 연결:** Code_Agent용 `~/.dev-guard/workflows.json` 작성(pytest check, scopes, 한도) → 파일럿 hook 설정에 SessionStart·Stop 추가 → Codex `/hooks` 신뢰 → 실제 세션에서 호출 확인.
+1. **실제 세션 확인:** Code_Agent에서 Codex `/hooks` 신뢰 → 작은 수정 작업으로 Stop 게이트 호출·차단·재시도 한도 확인. Claude Code는 새 세션에서 같은 확인. 1~2주 오탐·지연 수집.
 2. **Potpie:** Code_Agent 소스 등록, 검색 명령 형식 확인, on/off로 문맥 주입 효과 측정.
 3. **Serena:** 읽기 전용 프로젝트 등록과 호출처 조회 연결.
 4. **Ponytail:** 규칙 파일 경로·해시 설정, 변경량 한도 값 조정.

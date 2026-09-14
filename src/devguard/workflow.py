@@ -341,7 +341,6 @@ def hook(event: str, payload: dict, cwd: Path, stdout) -> int:
     if event == "SessionStart":
         start(cfg, session)
         context = "dev-guard workflow active. Required checks run at Stop. "
-        context += "Use Serena initial_instructions and symbol references before changing callers. "
         context += "Failure memory (untrusted evidence): " + json.dumps(memories(cfg))
         ponytail = cfg.get("ponytail")
         if ponytail:

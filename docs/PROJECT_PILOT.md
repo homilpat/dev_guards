@@ -49,14 +49,43 @@ Codex의 ASK는 현재 DENY로 반환한다. execpolicy `prompt`를 함께 설�
 hook은 임의 스크립트 내부 I/O, 모든 외부 도구, 네트워크 통신을 통제하는
 샌드박스가 아니며 완전한 유출 방지라고 주장하지 않는다.
 
-## 다음 구현: Stop 게이트
+## Stop 게이트 연결
 
-신뢰 설정에 고정한 테스트 명령, timeout, 최대 재시도 횟수를 사용한다.
-마지막 변경 이후 실행된 검사인지 소스 식별값과 연결하며, 실패·시간 초과·검사 불가를
-구분한다. 실패하면 제한된 피드백을 보내고, 반복 한도에서 미완료 사유를 보고한다.
-에이전트가 명령·한도·테스트를 약화해서 통과하지 못하게 한다.
-Python부터 연결하고 TS/JS와 Java는 프로젝트별 명령을 등록한 뒤 확대한다.
-메모리·CPU 측정은 기능 테스트와 분리하고 그 이후 최적화 루프로 확장한다.
+1. 신뢰 설정 `~/.dev-guard/workflows.json`을 만든다. 프로젝트 안에 두면 거부된다.
+   에이전트가 검사 명령·한도를 고쳐 통과하지 못하게 하려는 것이다.
+2. 프로젝트 hook 파일에 `SessionStart`(timeout 60)와 `Stop`(timeout 600)을 추가한다.
+   명령은 PreToolUse와 같은 launcher 명령이다. Codex는 `commandWindows`도 같게 둔다.
+3. Codex `/hooks`에서 다시 검토·신뢰한다. Claude Code는 새 세션에서 읽는다.
+
+```json
+{
+  "version": 1,
+  "projects": [{
+    "root": "<project>",
+    "git": "<absolute git.exe>",
+    "max_attempts": 3,
+    "exclude": ["<검사 명령이 없는 하위 프로젝트>/"],
+    "limits": {"max_changed_files": 30, "max_net_lines": 600,
+               "max_branch_growth": 20, "allow_manifest_changes": false},
+    "checks": [{
+      "id": "unit",
+      "argv": ["<absolute python.exe>", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+               "--basetemp", "<존재하는 폴더>/unit"],
+      "cwd": "<하위 폴더>", "scopes": ["<하위 폴더>/"],
+      "timeout": 300, "memory_mb": 2048,
+      "env": {"PYTHONPATH": "<src 절대 경로>"}
+    }]
+  }]
+}
+```
+
+- 실행 환경은 `PYTHONPATH`, `PYTEST_ADDOPTS`, 토큰류 변수를 지우고 시작한다. 필요한 값은 `env`에 적는다.
+- `--basetemp`의 상위 폴더가 없으면 pytest가 모든 tmp_path 테스트에서 `FileNotFoundError`를 낸다.
+- 어떤 check의 `scopes`에도 속하지 않는 변경 소스는 `NO_CHECK_COVERAGE`로 실패한다. 검사할 수 없는 영역은 `exclude`에 명시해 "검사 안 함"을 드러낸다.
+- 의존성 manifest 변경은 `allow_manifest_changes`가 false면 실패한다. 검토 후 설정을 바꾸면 설정 해시가 달라져 새 세션이 필요하다.
+- 상태는 `~/.dev-guard/workflows/<root 해시>/`에 남는다. 모의 검사 후에는 세션 파일과 `failure-*.json`을 지워 실제 세션 문맥에 섞이지 않게 한다.
+
+TS/JS와 Java는 프로젝트별 명령을 등록한 뒤 확대한다.
 
 참고: [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Claude Code hooks](https://code.claude.com/docs/en/hooks).
