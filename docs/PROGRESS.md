@@ -96,11 +96,28 @@ Knowledge Hub v1.10(로컬 모델 코드 에이전트, `homilpat/Code_Agent`)을
 - 사전 확인: dev-guard 실행기로 code-agent 131 passed/5 skipped(2.3초, peak RSS 61MB), evals 9 passed, code-agent ruff 통과.
 - launcher로 실제 hook 입력을 흉내 낸 흐름 확인: SessionStart 문맥 주입 → 변경 없음 `UNCHANGED` → code-agent 임시 파일 추가 시 검사 실행 `PASS` → 테스트 함수 제거 시 `TEST_REMOVAL`로 block → 복원 후 `UNCHANGED`. Claude Code·Codex 어댑터 둘 다. 임시 파일과 모의 상태·실패 기억은 삭제했고 Code_Agent 작업 트리는 깨끗하다.
 - SessionStart 문구에서 연결되지 않은 Serena 안내를 뺐다.
-- **미확인:** 실제 Claude Code·Codex 세션에서의 자동 호출. Codex는 `/hooks`에서 새 hook 신뢰가 필요하다.
+- **Claude Code 실제 세션 확인(16:43):** Code_Agent에서 `claude -p`(Claude Code 2.1.270, sonnet, Read·Edit만 허용)로 `code-agent/src/kh_agent/__init__.py`에 주석 한 줄 추가를 시켰다. SessionStart가 기준 스냅샷(소스 69개)을 만들고, Stop이 자동 호출되어 `code-agent-pytest`(131 passed/5 skipped, 2.2초, 62MB)와 `code-agent-ruff`를 실행해 `PASS`. scope 밖인 `evals-pytest`는 실행되지 않았다. 차단·확인 판정이 없어 감사 로그는 비어 있다. 테스트 주석은 되돌렸다.
+- **Codex:** 사용자가 `/hooks`에서 4개 hook을 신뢰했다(`~/.codex/config.toml`의 `hooks.state`에 해시 기록, 16:41). 신뢰를 누른 세션은 이미 시작된 상태라 SessionStart가 돌지 않았고, 사용량 한도로 실제 작업 호출은 아직 확인하지 못했다.
+- **Claude Code 실제 block 경로 확인(16:58, 16:59):** `claude -p`로 같은 파일에 쓰이지 않는 `import os` 추가를 시켰다. 수정 도구 검사(PreToolUse)는 통과하고 Stop에서 `code-agent-ruff` F401로 FAIL → `decision: block`이 에이전트에 전달됐다.
+  - 1차(프롬프트에 "정확히 이 줄만, 다른 것 수정 금지" 조건 포함): 에이전트가 지시와 충돌한다며 사용자에게 선택지를 묻기만 했다. block 3회 후 `RETRY_LIMIT`으로 세션 중단, 작업 미완료로 끝남. 한도 동작 확인.
+  - 2차(조건 없는 프롬프트): block 2회까지는 묻기만 하다가 3번째 block 후 스스로 import를 되돌렸고, 다음 Stop은 소스가 기준과 같아 `UNCHANGED`로 정상 종료. `# noqa`로 검사를 약화하지 않았다.
+  - 비용: 회당 약 $0.11~0.12(sonnet). 테스트 변경과 합성 실패 기억은 삭제했다.
+- 실사용에서 드러난 개선점:
+  1. 소스가 그대로인데 Stop이 반복되면 check를 다시 실행하고 시도 횟수만 소모한다(2·3차 시도가 같은 해시). 같은 해시의 이전 FAIL은 재실행 없이 돌려주는 편이 낫다.
+  2. block 사유 JSON에 통과한 check의 출력까지 들어가 길다. 실패한 check 출력만 넣는다.
+  3. 사유 문구가 "고쳐라"뿐이라 에이전트가 되묻기로 시도를 쓴다. "통과시킬 수 없으면 변경을 되돌리거나 미완료로 보고" 같은 선택지를 사유에 명시한다.
+  4. Claude Code가 block 때 "Stop hook error occurred" 알림을 띄웠다. 동작은 정상이었고 원인은 확인하지 않았다.
+- **개선 반영(`ef4a67b`):**
+  - 같은 소스 해시의 확정적 FAIL(모든 check가 PASS/FAIL, 검사 중 소스 변경 없음)은 재실행하지 않고 이전 결과를 돌려준다(`rerun: false`). 시도 횟수는 계속 센다. TIMEOUT 등 일시적 실패는 다시 실행한다.
+  - block 사유에는 통과하지 못한 check의 출력만 넣는다(최대 4000자).
+  - 사유 문구에 "통과시킬 수 없으면 원인 변경을 되돌리거나 미완료로 보고, 파일 변경 없이 턴을 끝내면 실패 시도로 센다"를 넣었다.
+  - 추가 결함 수정: `NOT_INITIALIZED`(SessionStart 없이 Stop, 예: 세션 도중 hook 신뢰)와 `CONFIG_CHANGED`는 에이전트가 해소할 수 없고 시도도 세지 않아 block이 무한 반복될 수 있었다. 이제 block하지 않고 "검사 안 됨, 미검증" 경고만 낸다.
+  - 테스트 4개 추가(132 passed). 이 중 3개는 이전 코드에서 실패함을 확인했고, 일시적 실패 재실행 테스트는 과도한 재사용을 막는 보호 테스트다.
+- **개선 후 실측(17:16, 같은 조건 없는 프롬프트):** block 1회 후 에이전트가 바로 되돌리고 "Task incomplete"로 보고, 다음 Stop `UNCHANGED`. 개선 전 대비 block 3회→1회, 25초(전 39초), $0.06(전 $0.12), 사유 878자로 실패한 ruff 출력만 포함. 표본 1회라 경향 확인 수준이다.
 
 ## 다음 단계 (추천 순서)
 
-1. **실제 세션 확인:** Code_Agent에서 Codex `/hooks` 신뢰 → 작은 수정 작업으로 Stop 게이트 호출·차단·재시도 한도 확인. Claude Code는 새 세션에서 같은 확인. 1~2주 오탐·지연 수집.
+1. **실제 세션 확인 마무리:** Codex 새 세션에서 작은 수정으로 Stop 게이트 호출·block 확인(신뢰는 완료). 1~2주 오탐·지연 수집.
 2. **Potpie:** Code_Agent 소스 등록, 검색 명령 형식 확인, on/off로 문맥 주입 효과 측정.
 3. **Serena:** 읽기 전용 프로젝트 등록과 호출처 조회 연결.
 4. **Ponytail:** 규칙 파일 경로·해시 설정, 변경량 한도 값 조정.
