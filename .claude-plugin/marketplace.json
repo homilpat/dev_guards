@@ -1,0 +1,14 @@
+{
+  "name": "dev-guard",
+  "owner": {
+    "name": "homilpat"
+  },
+  "description": "Guardrails for AI coding agents derived from the Knowledge Hub v1.10 security requirements",
+  "plugins": [
+    {
+      "name": "dev-guard",
+      "source": "./plugins/claude-code/dev-guard",
+      "description": "Deterministic guardrails for Claude Code sessions"
+    }
+  ]
+}

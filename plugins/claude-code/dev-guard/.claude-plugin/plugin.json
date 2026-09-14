@@ -1,0 +1,11 @@
+{
+  "name": "dev-guard",
+  "version": "0.1.0",
+  "description": "Deterministic guardrails: sensitive files, secrets, dangerous commands, test integrity, local-only repositories",
+  "author": {
+    "name": "homilpat"
+  },
+  "repository": "https://github.com/homilpat/dev-guard",
+  "license": "MIT",
+  "keywords": ["guardrails", "security", "hooks"]
+}
