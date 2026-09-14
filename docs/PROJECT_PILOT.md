@@ -87,5 +87,35 @@ hook은 임의 스크립트 내부 I/O, 모든 외부 도구, 네트워크 통�
 
 TS/JS와 Java는 프로젝트별 명령을 등록한 뒤 확대한다.
 
+## Potpie 문맥 연결
+
+프로젝트 항목에 `potpie`를 추가하면 UserPromptSubmit에서 관련 기록을 주입한다.
+
+```json
+"potpie": {
+  "argv": ["<absolute potpie.exe>"],
+  "pot": "<pot id>",
+  "timeout": 15,
+  "min_similarity": 0.3,
+  "limit": 5,
+  "env": {
+    "CONTEXT_ENGINE_HOME": "<potpie home>",
+    "CONTEXT_ENGINE_BACKEND": "embedded",
+    "CONTEXT_ENGINE_HOST_MODE": "in_process",
+    "CONTEXT_ENGINE_EMBEDDER": "local",
+    "POTPIE_TELEMETRY_DISABLED": "1",
+    "HTTP_PROXY": "http://127.0.0.1:9",
+    "HTTPS_PROXY": "http://127.0.0.1:9",
+    "NO_PROXY": "localhost,127.0.0.1"
+  }
+}
+```
+
+- 기록: `potpie --json record --pot <id> --scope repo:<name> --type runbook_note --summary "<사실>"`. CLI에서는 자유 형식 타입(`workflow`, `runbook_note`, `integration_note`, `investigation` 등)만 받는다.
+- 기록은 절대 경로와 정확한 명령까지 쓴다. 모호한 기록은 에이전트의 넓은 탐색을 부른다(실측: 14턴 → 정확한 기록 추가 후 4턴).
+- 해싱 임베더는 단어 겹침 기반이다. 기록 언어와 프롬프트 언어가 다르면 찾지 못한다.
+- 프록시 값은 외부 통신 시도를 실패시키기 위한 것이다. 네트워크 차단 보장은 아니다.
+- 확인: `dev-guard workflow context --cwd <project> --query "<질의>"`.
+
 참고: [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Claude Code hooks](https://code.claude.com/docs/en/hooks).

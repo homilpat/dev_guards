@@ -115,10 +115,54 @@ Knowledge Hub v1.10(로컬 모델 코드 에이전트, `homilpat/Code_Agent`)을
   - 테스트 4개 추가(132 passed). 이 중 3개는 이전 코드에서 실패함을 확인했고, 일시적 실패 재실행 테스트는 과도한 재사용을 막는 보호 테스트다.
 - **개선 후 실측(17:16, 같은 조건 없는 프롬프트):** block 1회 후 에이전트가 바로 되돌리고 "Task incomplete"로 보고, 다음 Stop `UNCHANGED`. 개선 전 대비 block 3회→1회, 25초(전 39초), $0.06(전 $0.12), 사유 878자로 실패한 ruff 출력만 포함. 표본 1회라 경향 확인 수준이다.
 
+## Potpie 문맥 연결 (2026-09-14 밤, 실측 완료)
+
+### 확인한 Potpie 동작 (소스·실행 확인)
+
+- Potpie는 코드 인덱서가 아니다. 스캐너는 삭제됐고 `source add`는 등록만 한다. 에이전트·사람이 기록한 결정·버그 패턴·절차를 그래프에 저장하고 꺼내는 "프로젝트 기억"이다.
+- CLI `record`는 `--type/--summary/--scope`만 받는다. `fix`·`decision`·`bug_pattern`·`preference`·`verification`은 추가 필드가 필요해 CLI로는 거절되고, `workflow`·`runbook_note`·`integration_note`·`investigation` 등 자유 형식만 기록된다. 자유 형식은 검색 시 `docs` include로만 나온다.
+- `embedded` 백엔드는 `CONTEXT_ENGINE_HOME/graph.json`에 저장되어 프로세스 간 유지된다. 기본 임베더는 해싱 임베더(모델 다운로드 없음), 서버 측 LLM reconciliation은 기본 꺼짐. 기록·검색에 LLM이 필요 없다.
+- 검색은 범위 안의 기록을 관련 없는 질의에도 모두 약 0.52점으로 돌려준다. 실제 관련성은 `properties.semantic_similarity`로만 구분된다. 호출당 약 1초.
+
+### dev-guard 수정 (`a5bc78a`)
+
+- 기존 `context.py`는 `--include` 없이 호출해 자유 형식 기록을 못 가져왔고, `execution.run`이 출력 끝 8KB만 남겨 검색 JSON이 잘렸다. 비밀값 가리기를 JSON 원문에 적용하면 따옴표가 깨질 수 있었다.
+- `--include docs,decisions,prior_bugs,coding_preferences` 전달, stderr가 앞에 섞여도 JSON 파싱, `semantic_similarity >= min_similarity`(기본 0.3) 항목만 사실·유사도·출처로 요약해 상위 5개, 넣을 것이 없으면 주입하지 않음, Potpie 실행 파일 절대 경로 검증. `execution.run`에 `keep_bytes`·`redact` 옵션.
+- 테스트 3개 추가(135 passed), 이전 코드에서 3개 모두 실패 확인.
+
+### 설정과 기록
+
+- `workflows.json`에 `potpie` 추가: `_integration_sources/potpie-env` 실행 파일, pot `pot_61fbb33f277e`(code-agent-devguard), `runtime/potpie` home, embedded·in_process·local 임베더·텔레메트리 끔, 외부 통신 시도가 실패하도록 `HTTP(S)_PROXY=127.0.0.1:9`(localhost 제외).
+- 이 세션에서 검증된 사실 6건을 `scope repo:Code_Agent`로 기록: basetemp 필요, 테스트 실행 환경, 옛 사본 수정 금지, 쓰이지 않는 import는 noqa 대신 제거, Local-Only 유지, 정확한 테스트 실행 명령.
+
+### 검색 품질 실측 (기록 5건 기준)
+
+| 질의 | 결과 |
+|---|---|
+| 무관한 영어 질의(Next.js 스타일, docker 포트) | 모두 0.16 미만, 주입 없음 |
+| "pytest permission error on this machine" | 해당 기록 1건만 0.348로 통과 |
+| "run the code-agent tests" | 5건 모두 통과(관련 없는 Local-Only 기록 포함) |
+| "can the code agent call the OpenAI API" | Local-Only 기록(0.30)보다 무관한 venv 기록(0.54)이 높음 |
+| 한국어 "코드 에이전트 테스트 돌려줘" | 전부 0.000, 주입 없음 |
+
+해싱 임베더는 단어 겹침 수준이라 정밀도가 낮고, **영어 기록은 한국어 프롬프트로 찾을 수 없다.**
+
+### on/off 실측 (Claude Code `claude -p`, sonnet, 같은 영어 프롬프트 "code-agent 테스트를 돌리고 개수 보고, 설치·수정 금지")
+
+| | 결과 | 턴 | 시간 | 비용 |
+|---|---|---|---|---|
+| Potpie 끔 (`DEV_GUARD_HOME` 사본에서 potpie 제거) | 실패: "패키지 설치 없이는 실행 불가"로 보고 | 18 | 174초 | $0.22 |
+| Potpie 켬, 기록 5건(경로 없는 모호한 실행 기록) | 성공(131/0/5). `.venv-runtime`을 찾아 디스크 전체를 뒤지고 `~/.dev-guard/workflows.json`과 다른 프로젝트의 Claude 메모리까지 읽어 명령을 알아냄 | 14 | 164초 | $0.20 |
+| Potpie 켬, 정확한 절대 경로 명령 기록 1건 추가 | 성공(131/0/5). 기록된 명령을 바로 실행 | 4 | 15초 | $0.07 |
+
+- 문맥 주입은 stream에 hook 응답 이벤트로 나오지 않았다. 켠 쪽이 Potpie 기록에만 있는 `.venv-runtime` 이름을 두 번째 명령에서 찾기 시작한 것으로 주입을 확인했다.
+- 결론: 효과는 크지만 **기록 품질(절대 경로·정확한 명령)에 좌우된다.** 각 조건 1회라 경향 확인 수준이다.
+- 모호한 기록일 때 에이전트가 관련 설정 파일과 다른 프로젝트 메모리를 탐색했다. 민감 파일 규칙에는 걸리지 않지만 탐색 범위가 넓어진다.
+
 ## 다음 단계 (추천 순서)
 
 1. **실제 세션 확인 마무리:** Codex 새 세션에서 작은 수정으로 Stop 게이트 호출·block 확인(신뢰는 완료). 1~2주 오탐·지연 수집.
-2. **Potpie:** Code_Agent 소스 등록, 검색 명령 형식 확인, on/off로 문맥 주입 효과 측정.
+2. **Potpie 후속:** 한국어 프롬프트 대응(한·영 병기 기록 또는 다국어 임베딩 모델, 후자는 최초 모델 다운로드 필요), 기록 작성 규칙(절대 경로·정확한 명령·검증 날짜), Stop 게이트 실패·해결을 자동으로 기록할지 결정, 표본을 늘린 on/off 재측정.
 3. **Serena:** 읽기 전용 프로젝트 등록과 호출처 조회 연결.
 4. **Ponytail:** 규칙 파일 경로·해시 설정, 변경량 한도 값 조정.
 5. **언어 확장:** TS/JS(npm test, V8 profile), Java(gradle/mvn test, JFR) check·benchmark 템플릿.
