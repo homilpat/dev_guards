@@ -117,5 +117,31 @@ TS/JS와 Java는 프로젝트별 명령을 등록한 뒤 확대한다.
 - 프록시 값은 외부 통신 시도를 실패시키기 위한 것이다. 네트워크 차단 보장은 아니다.
 - 확인: `dev-guard workflow context --cwd <project> --query "<질의>"`.
 
+## 자체 recall (2026-09-15부터 Potpie 대신 사용)
+
+Code_Agent 설정은 `potpie`를 빼고 `recall`로 전환했다. 같은 기록 6건·질의 38개 비교에서 검색 품질은 Potpie와 같거나 조금 나았고(검증 28개 중 정답만 주입 16/20 vs 14/20, 무관 질의 무주입 8/8 동일), hook 경로 1회는 0.28초 vs 1.62초였다. Potpie식 card 텍스트를 넣으면 Potpie 점수와 완전히 같아서, 엔진 차이는 없고 임베딩할 텍스트(사실 문장만)만 다르다.
+
+프로젝트 항목에 `recall`을 추가하면 dev-guard가 기록을 직접 저장·검색한다. hook 쪽은 외부 패키지가 없고, 임베딩은 sentence-transformers가 설치된 별도 Python에서 상주 서버로 돌린다.
+
+```json
+"recall": {
+  "python": "<absolute python.exe with sentence-transformers>",
+  "model": "BAAI/bge-m3",
+  "cache": "<model cache folder>",
+  "env": {"HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"},
+  "timeout": 5,
+  "autostart": true,
+  "min_similarity": 0.5,
+  "max_similarity_gap": 0.04,
+  "limit": 5
+}
+```
+
+- 기록: `dev-guard recall add --cwd <project> --fact "<사실>" --source <출처> [--anchor <파일>]... [--expires-days N]`. 비밀값이 든 기록은 거부한다.
+- `--anchor`로 지정한 파일 내용이 바뀌면 그 기록은 검색에서 빠진다(현재 소스가 과거 기록보다 우선). 만료된 기록, `recall invalidate --id <id>`로 무효화한 기록도 빠진다.
+- 임베딩 모델을 바꾸면 기존 기록은 0점이 아니라 `skipped.model_mismatch`로 보고되므로 다시 기록한다.
+- 서버: `recall server-start|server-stop|server`. 꺼져 있으면 hook이 자동으로 띄우고, 모델을 올리는 동안(약 7~15초)은 주입하지 않는다. loopback 전용, 실행마다 새 토큰, 요청 문장은 로그에 남기지 않는다.
+- 상태는 `~/.dev-guard/workflows/<root 해시>/recall.sqlite3`와 `~/.dev-guard/embedder/`에 남는다.
+
 참고: [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Claude Code hooks](https://code.claude.com/docs/en/hooks).

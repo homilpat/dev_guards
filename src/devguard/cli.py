@@ -15,6 +15,8 @@ from devguard.policy import load_policy
 from devguard.rules import RULES
 
 ADAPTERS = {claude_code.NAME: claude_code, codex.NAME: codex}
+RECALL_ACTIONS = ("add", "list", "invalidate", "search", "server-start", "server-stop", "server")
+RECALL_OK = {"AVAILABLE", "RECORDED", "INVALIDATED", "RUNNING", "STARTING", "STOPPED"}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,6 +47,15 @@ def main(argv: list[str] | None = None) -> int:
     bench.add_argument("profile")
     bench.add_argument("--cwd", default=".")
     bench.add_argument("--baseline", action="store_true")
+    note = sub.add_parser("recall", help="Manage verified project notes and the embedding server.")
+    note.add_argument("action", choices=[*RECALL_ACTIONS])
+    note.add_argument("--cwd", default=".")
+    note.add_argument("--fact", default="")
+    note.add_argument("--source", default="manual")
+    note.add_argument("--anchor", action="append", default=[], help="File the note depends on.")
+    note.add_argument("--expires-days", type=float)
+    note.add_argument("--id", default="")
+    note.add_argument("--query", default="")
     args = parser.parse_args(argv)
 
     if args.subcommand == "hook":
@@ -56,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.subcommand == "codex-rules":
         sys.stdout.write(codex.render_rules())
         return 0
-    if args.subcommand in {"workflow", "benchmark"}:
+    if args.subcommand in {"workflow", "benchmark", "recall"}:
         return _workflow(args)
     return _check(args)
 
@@ -129,6 +140,8 @@ def _workflow(args: argparse.Namespace) -> int:
     if not cfg:
         print(json.dumps({"status": "NOT_CONFIGURED"}))
         return 1
+    if args.subcommand == "recall":
+        return _recall(args, cfg)
     if args.subcommand == "benchmark":
         result = benchmark.run(cfg, args.profile, args.baseline)
     elif args.action == "start":
@@ -143,8 +156,36 @@ def _workflow(args: argparse.Namespace) -> int:
         result = {
             "root": cfg["root"],
             "checks": [c["id"] for c in cfg.get("checks", [])],
+            "recall_configured": bool(cfg.get("recall")),
             "potpie_configured": bool(cfg.get("potpie")),
             "ponytail_configured": bool(cfg.get("ponytail")),
         }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result.get("status", "PASS") in {"PASS", "UNCHANGED"} else 1
+
+
+def _recall(args: argparse.Namespace, cfg: dict) -> int:
+    from devguard import recall
+
+    provider = cfg.get("recall")
+    try:
+        if not provider:
+            result = {"status": "NOT_CONFIGURED"}
+        elif args.action == "add":
+            result = recall.add(cfg, args.fact, args.source, args.anchor, args.expires_days)
+        elif args.action == "list":
+            result = {"status": "AVAILABLE", "notes": recall.notes(cfg)}
+        elif args.action == "invalidate":
+            result = recall.invalidate(cfg, args.id)
+        elif args.action == "search":
+            result = recall.search(cfg, args.query)
+        elif args.action == "server-start":
+            result = {"status": recall.start_server(provider)}
+        elif args.action == "server-stop":
+            result = {"status": recall.stop_server(provider)}
+        else:
+            result = recall.server_status(provider)
+    except recall.NotReady as exc:
+        result = {"status": exc.status}
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0 if result["status"] in RECALL_OK else 1

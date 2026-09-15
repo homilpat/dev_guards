@@ -16,6 +16,15 @@ def scrub(text: str) -> str:
     return ASSIGNMENT.sub("[REDACTED ASSIGNMENT]", text)
 
 
+def environment() -> dict:
+    """The parent environment without credential-looking variables."""
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if not any(word in k.upper() for word in ("TOKEN", "SECRET", "PASSWORD", "API_KEY"))
+    }
+
+
 def run(
     argv: list[str],
     cwd: Path,
@@ -30,11 +39,7 @@ def run(
     import psutil
 
     started = time.monotonic()
-    env = {
-        k: v
-        for k, v in os.environ.items()
-        if not any(word in k.upper() for word in ("TOKEN", "SECRET", "PASSWORD", "API_KEY"))
-    }
+    env = environment()
     env.update(
         {
             "PYTHONIOENCODING": "utf-8",

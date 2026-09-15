@@ -1,6 +1,25 @@
 # dev-guard 진행 기록
 
-기준일: 2026-09-14 (Asia/Seoul)
+기준일: 2026-09-15 (Asia/Seoul)
+
+## 2026-09-15: Potpie → 자체 recall 전환
+
+- `recall.py`: 기록을 SQLite에 저장하고 코사인으로 순위를 매긴 뒤 기준값·간격 필터를 적용한다. 규칙 네 가지를 추가했다.
+  - 기준(anchor) 파일 hash가 바뀌면 그 기록을 제외한다(현재 소스 우선).
+  - 기록 만료를 지원한다.
+  - 비밀값이 든 기록은 거부한다.
+  - 임베딩 모델이 다르면 0점 처리하지 않고 `skipped.model_mismatch`로 보고한다.
+- `embedder.py`: BGE-M3를 상주시키는 서버. loopback만 쓰고 실행마다 새 토큰을 만들며, 요청 크기를 제한하고 요청 문장은 로그에 남기지 않는다. hook에서 자동으로 기동한다(Windows에서는 job object 이탈 후 detached 실행).
+- CLI `recall add|list|invalidate|search|server-start|server-stop|server`. `context.py`는 recall과 Potpie 결과를 함께 다루고, 서버 기동 중에는 주입하지 않는다. 테스트 154 passed.
+- 비교(질의 38개: 튜닝 10 + 검증 28, 정답은 점수 보기 전에 작성):
+  - 검증 세트: 정답만 주입 16/20(Potpie 14/20), 무관 질의 무주입 8/8(동일), 1위 적중 18/20(동일).
+  - Potpie식 card 텍스트를 넣은 결과는 Potpie와 모든 지표가 같다.
+  - 우회 표현의 Local-Only 위반 질의("GPT-4 써도 돼?" 등)는 두 방식 모두 못 막는다. guard 규칙 영역이다.
+- 3차원 축소 검토(사용자 질문): 비교 대상 56개에서 PCA 3차원 1위 적중 19%, 206개 이상에서 0%. 1024차원 원본은 93%/85%였다. 검색에는 원본 차원을 쓴다.
+- 전환 확인: Code_Agent hook 명령 그대로 실행했다.
+  - 관련 질의: 0.29초에 기록 주입. 무관 질의: 주입 없음.
+  - 서버를 끄고 hook 실행: 0.14초에 조용히 반환하고 서버를 띄웠다. 서버는 hook 종료 후에도 살아 있었고 7.5초 뒤 준비됐다.
+- 기록 이전: Potpie 6건을 옮겼다. 테스트 통과 개수를 못박은 문장("expected 131 passed")은 개수가 계속 바뀌므로 개수를 뺐다. ruff 기록은 `code-agent/pyproject.toml`을 기준 파일로 연결했다.
 
 ## 배경
 
