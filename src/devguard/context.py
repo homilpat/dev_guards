@@ -22,12 +22,19 @@ def evidence(data: dict, provider: dict) -> list[dict]:
         picked.append(
             {
                 "fact": execution.scrub(str(fact))[:500],
-                "similarity": round(similarity, 3),
+                "similarity": float(similarity),
                 "source": (payload.get("source_refs") or [None])[0],
             }
         )
     picked.sort(key=lambda e: e["similarity"], reverse=True)
-    return picked[: provider.get("limit", 5)]
+    max_gap = provider.get("max_similarity_gap")
+    if max_gap is not None and picked:
+        cutoff = picked[0]["similarity"] - max_gap
+        picked = [item for item in picked if item["similarity"] >= cutoff]
+    limited = picked[: provider.get("limit", 5)]
+    for item in limited:
+        item["similarity"] = round(item["similarity"], 3)
+    return limited
 
 
 def query(cfg: dict, task: str) -> dict:

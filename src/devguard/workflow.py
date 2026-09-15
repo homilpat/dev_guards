@@ -77,6 +77,13 @@ def configuration(cwd: Path) -> dict | None:
                 argv = provider.get("argv")
                 if not isinstance(argv, list) or not argv or not Path(argv[0]).is_absolute():
                     raise ValueError("Potpie executable must be an absolute argv[0]")
+                max_gap = provider.get("max_similarity_gap")
+                if max_gap is not None and (
+                    isinstance(max_gap, bool)
+                    or not isinstance(max_gap, (int, float))
+                    or not 0 <= max_gap <= 1
+                ):
+                    raise ValueError("Potpie max_similarity_gap must be between 0 and 1")
             candidates.append(cfg)
     return max(candidates, key=lambda c: len(c["root"])) if candidates else None
 

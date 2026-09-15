@@ -39,6 +39,30 @@ def test_potpie_evidence_is_filtered_compact_and_redacted(tmp_path):
     assert args[-2:] == ["--", "why does pytest fail with permission errors"]
 
 
+def test_potpie_evidence_filters_items_too_far_below_the_best_match():
+    data = {
+        "items": [
+            {
+                "payload": {
+                    "fact": fact,
+                    "source_refs": [source],
+                    "properties": {"semantic_similarity": similarity},
+                }
+            }
+            for fact, source, similarity in (
+                ("best", "record:1", 0.61),
+                ("also useful", "record:2", 0.58),
+                ("threshold-only distractor", "record:3", 0.55),
+            )
+        ]
+    }
+
+    result = context.evidence(data, {"min_similarity": 0.5, "max_similarity_gap": 0.04, "limit": 5})
+
+    assert [item["source"] for item in result] == ["record:1", "record:2"]
+    assert [item["similarity"] for item in result] == [0.61, 0.58]
+
+
 def test_prompt_is_silent_without_relevant_context(tmp_path, isolated_home):
     root = tmp_path / "repo"
     root.mkdir()
@@ -65,4 +89,19 @@ def test_relative_potpie_executable_is_rejected(tmp_path, isolated_home):
     cfg = {"root": str(root), "potpie": {"argv": ["potpie"]}}
     (isolated_home / "workflows.json").write_text(json.dumps({"version": 1, "projects": [cfg]}))
     with pytest.raises(ValueError, match="absolute"):
+        workflow.configuration(root)
+
+
+@pytest.mark.parametrize("value", [True, -0.1, 1.1, "0.04"])
+def test_invalid_potpie_similarity_gap_is_rejected(tmp_path, isolated_home, value):
+    root = tmp_path / "repo"
+    root.mkdir()
+    isolated_home.mkdir()
+    cfg = {
+        "root": str(root),
+        "potpie": {"argv": [sys.executable], "max_similarity_gap": value},
+    }
+    (isolated_home / "workflows.json").write_text(json.dumps({"version": 1, "projects": [cfg]}))
+
+    with pytest.raises(ValueError, match="max_similarity_gap"):
         workflow.configuration(root)
