@@ -43,7 +43,8 @@ TOOLS = [
     },
     {
         "name": "check_patch",
-        "description": "Inspect proposed text changes using the shared policy engine; no patch is applied.",
+        "description": ("Inspect proposed text changes using the shared policy engine; "
+                        "no patch is applied."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -58,7 +59,8 @@ TOOLS = [
     },
     {
         "name": "validate_task",
-        "description": "Check a limited task envelope and proposed command/path against policy; no dispatch.",
+        "description": ("Check a limited task envelope and proposed command/path "
+                        "against policy; no dispatch."),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -137,7 +139,11 @@ def check(name: str, arguments: object, root: Path) -> dict:
         "allowed_without_confirmation": verdict.decision is Decision.ALLOW,
         "advisory_only": True,
         "findings": [
-            {"rule_id": finding.rule_id, "decision": finding.decision.name, "source": finding.source}
+            {
+                "rule_id": finding.rule_id,
+                "decision": finding.decision.name,
+                "source": finding.source,
+            }
             for finding in verdict.findings
         ],
     }
