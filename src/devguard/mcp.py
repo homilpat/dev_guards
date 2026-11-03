@@ -43,8 +43,9 @@ TOOLS = [
     },
     {
         "name": "check_patch",
-        "description": ("Inspect proposed text changes using the shared policy engine; "
-                        "no patch is applied."),
+        "description": (
+            "Inspect proposed text changes using the shared policy engine; no patch is applied."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -59,8 +60,9 @@ TOOLS = [
     },
     {
         "name": "validate_task",
-        "description": ("Check a limited task envelope and proposed command/path "
-                        "against policy; no dispatch."),
+        "description": (
+            "Check a limited task envelope and proposed command/path against policy; no dispatch."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -112,21 +114,29 @@ def check(name: str, arguments: object, root: Path) -> dict:
     elif name == "check_file_access":
         path = values["path"]
         call = ToolCall(
-            "mcp", name, str(root),
+            "mcp",
+            name,
+            str(root),
             reads=(path,) if values["operation"] == "read" else (),
             changes=(FileChange(path),) if values["operation"] == "write" else (),
         )
     elif name == "check_patch":
         call = ToolCall(
-            "mcp", name, str(root),
-            changes=(FileChange(
-                values["path"], values["removed"], values["added"], values.get("deleted", False)
-            ),),
+            "mcp",
+            name,
+            str(root),
+            changes=(
+                FileChange(
+                    values["path"], values["removed"], values["added"], values.get("deleted", False)
+                ),
+            ),
         )
     else:
         action, target = values["action"], values["target"]
         call = ToolCall(
-            "mcp", name, str(root),
+            "mcp",
+            name,
+            str(root),
             command=target if action == "command" else None,
             reads=(target,) if action == "read" else (),
             changes=(FileChange(target),) if action == "write" else (),
