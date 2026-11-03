@@ -2,6 +2,8 @@
 
 import json
 import os
+
+import pytest
 import subprocess
 import sys
 from pathlib import Path
@@ -39,6 +41,18 @@ def test_sensitive_file_and_protected_configuration(tmp_path, monkeypatch):
     assert check("check_patch", {
         "path": ".codex/hooks.json", "removed": "", "added": "{}"
     }, tmp_path)["decision"] == "DENY"
+
+
+
+@pytest.mark.parametrize("removed,added", [("", "new"), ("old", ""), ("", "")])
+def test_empty_patch_text_is_valid(tmp_path, removed, added):
+    result = check(
+        "check_patch",
+        {"path": "src/example.py", "removed": removed, "added": added},
+        tmp_path,
+    )
+    assert result["decision"] == "ALLOW"
+
 
 
 def test_invalid_arguments_fail_closed(tmp_path):
