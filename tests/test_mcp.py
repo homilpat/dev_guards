@@ -50,7 +50,6 @@ def test_sensitive_file_and_protected_configuration(tmp_path, monkeypatch):
     )
 
 
-
 @pytest.mark.parametrize("removed,added", [("", "new"), ("old", ""), ("", "")])
 def test_empty_patch_text_is_valid(tmp_path, removed, added):
     result = check(
@@ -59,7 +58,6 @@ def test_empty_patch_text_is_valid(tmp_path, removed, added):
         tmp_path,
     )
     assert result["decision"] == "ALLOW"
-
 
 
 def test_invalid_arguments_fail_closed(tmp_path):
