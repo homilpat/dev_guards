@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software in academic work, please cite it."
+title: "dev-guard: Deterministic Guardrails for Coding Agents"
+type: software
+authors:
+  - family-names: Jang
+    given-names: JongHyeok
+repository-code: "https://github.com/homilpat/dev_guards"
+license: Apache-2.0
+version: "0.1.0"
+date-released: 2026-11-04
