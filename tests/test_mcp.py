@@ -2,11 +2,11 @@
 
 import json
 import os
-
-import pytest
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
 
 from devguard.mcp import check, handle
 
