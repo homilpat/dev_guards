@@ -6,8 +6,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from devguard.mcp import TOOLS, check, handle
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,7 +67,7 @@ def test_stdio_round_trip(tmp_path):
         {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
          "params": {"name": "check_command", "arguments": {"command": "sudo reboot"}}},
     ]
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 - fixed interpreter and module under test
         [sys.executable, "-m", "devguard.mcp", "--cwd", str(tmp_path)],
         input="".join(json.dumps(item) + "\n" for item in requests),
         capture_output=True,
