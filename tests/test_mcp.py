@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from devguard.mcp import TOOLS, check, handle
+from devguard.mcp import check, handle
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -56,7 +56,7 @@ def test_empty_patch_text_is_valid(tmp_path, removed, added):
 
 
 def test_invalid_arguments_fail_closed(tmp_path):
-    for values in ({"command": "ls", "cwd": "/tmp"}, {"command": 3}, {}):
+    for values in ({"command": "ls", "cwd": "unknown_cwd"}, {"command": 3}, {}):
         response = handle({
             "jsonrpc": "2.0", "id": 8, "method": "tools/call",
             "params": {"name": "check_command", "arguments": values}
