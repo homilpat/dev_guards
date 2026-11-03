@@ -4,6 +4,33 @@ Claude Code와 Codex CLI로 개발할 때 **결정적 코드로 강제하는 가
 
 규칙은 Knowledge Hub v1.10 요구사항(M06 Sandbox·Command Policy, M08 Local-Only Security 등)과 code-agent 구현에서 가져왔습니다. 대화형 개발에 맞게 일부 규칙은 "차단" 대신 "확인"으로 조정했습니다.
 
+## MCP 검증 서버 (실험적 / 검증 전용)
+
+로컬 `stdio` MCP 서버가 기존 `devguard.engine.evaluate`와 사용자·저장소 정책을 재사용합니다. Python 3.11 이상이면 추가 런타임 의존성 없이 사용할 수 있습니다.
+
+```bash
+dev-guard-mcp --cwd /absolute/path/to/repository
+# 설치 없이 실행하려면: python -m devguard.mcp --cwd /absolute/path/to/repository
+```
+
+MCP 클라이언트의 서버 설정에서는 명령을 `dev-guard-mcp`, 인자를 `["--cwd", "/absolute/path/to/repository"]`로 지정하세요. 대상 루트는 서버 시작 시 고정됩니다.
+
+제공하는 읽기/검증 전용 도구:
+- `check_command(command)` — 실행하지 않고 명령 검사
+- `check_file_access(path, operation)` — read/write 경로 검사
+- `check_patch(path, removed, added, deleted?)` — 제안된 변경 텍스트 검사
+- `validate_task(task_id, action, target)` — 최소 작업 Envelope 검사 (실행/분배하지 않음)
+
+응답은 `ALLOW / ASK / DENY`, 규칙 ID, `allowed_without_confirmation`, `advisory_only`로 구분됩니다. `ASK`도 자동 실행 허가가 아닙니다. 정책 로딩 실패·잘못된 인자는 `isError: true`로 반환하며 허용하지 않습니다.
+
+**보안 경계:** 이 MCP 서버는 사전 확인 도구일 뿐 강제 실행 게이트가 아닙니다. 클라이언트가 검사를 건너뛰거나 검사 후 명령을 변경할 수 있습니다. 실제 실행 시점에서 동일한 정책을 다시 강제하고, 격리 실행·호스트 권한 통제·네트워크 차단을 별도로 적용해야 합니다. 기존 Hook/CLI 가드레일은 유지됩니다. 현재 코드에서 완전한 경로 정규화, 임의 Python 실행 안전성, 보안 무결성을 증명한다고 주장하지 않습니다.
+
+## License and research direction
+
+Copyright © 2026 JongHyeok Jang. Licensed under [Apache-2.0](LICENSE); see [NOTICE](NOTICE). Academic citation information is in [CITATION.cff](CITATION.cff) (citation requested, not a license obligation). Third-party code and dependencies retain their respective licenses.
+
+장기 연구 목표는 Code_Agent 및 자율 연구 에이전트와 연동해 LLM이 생성한 구조화된 작업 명령을 안전하게 검증하는 것입니다. 자율 오케스트레이션, 실행 강제 및 과학적 연구 무결성의 완전한 구현을 현재 기능으로 주장하지 않습니다.
+
 ## 가드레일
 
 `dev-guard rules`로 전체 목록과 근거 문서를 볼 수 있습니다.
