@@ -89,7 +89,11 @@ def _arguments(name: str, values: object) -> dict:
     for field, value in values.items():
         prop = schema["properties"][field]
         kind = prop["type"]
-        if kind == "string" and (not isinstance(value, str) or not value or len(value) > 100000):
+        if kind == "string" and (
+            not isinstance(value, str)
+            or (not value and field not in {"removed", "added"})
+            or len(value) > 100000
+        ):
             raise InvalidArguments("invalid string argument: " + field)
         if kind == "boolean" and not isinstance(value, bool):
             raise InvalidArguments("invalid boolean argument: " + field)
